@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ブロックス風パズルゲーム</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <h1>ブロックス風パズルゲーム</h1>
+
+      <div class="status">
+        現在のプレイヤー：<span id="current-player">青</span>
+      </div>
+      <div class="player-select-area">
+        <label for="human-player-select">自分の色：</label>
+        <select id="human-player-select">
+          <option value="0">青</option>
+          <option value="1">赤</option>
+          <option value="2">黄</option>
+          <option value="3">緑</option>
+        </select>
+      </div>
+
+      <div class="piece-area">
+        <p>ピースを選択</p>
+
+        <div class="controls">
+          <button id="rotate-button" class="control-button">回転</button>
+          <button id="flip-button" class="control-button">反転</button>
+          <button id="pass-button" class="control-button">パス</button>
+          <button id="reset-button">リセット</button>
+        </div>
+        <h2>選択中のピース</h2>
+        <div id="selected-piece-preview" class="selected-piece-preview"></div>
+        <div id="piece-list" class="piece-list"></div>
+        <h2>全プレイヤーの残りピース</h2>
+        <div id="all-player-pieces" class="all-player-pieces"></div>
+      </div>
+
+      <div id="board" class="board"></div>
+      <div id="log" class="log"></div>
+      <div id="result" class="result"></div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
