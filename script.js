@@ -653,49 +653,116 @@ function nextPlayer() {
 }
 
 function hasValidMove(playerIndex) {
-  const pieces = playerPieces[playerIndex];
+  return getValidMoves(playerIndex).length > 0;
+}
+function getShapeCells(shape) {
+  const cells = [];
 
-  for (let pieceIndex = 0; pieceIndex < pieces.length; pieceIndex++) {
-    const piece = pieces[pieceIndex];
+  shape.forEach((row, rowIndex) => {
+    row.forEach((value, colIndex) => {
+      if (value === 1) {
+        cells.push({ row: rowIndex, col: colIndex });
+      }
+    });
+  });
 
-    if (piece.used) {
-      continue;
-    }
+  return cells;
+}
 
-    const originalShape = cloneShape(piece.shape);
-    for (let flip = 0; flip < 2; flip++) {
-      let testShape =
-        flip === 1
-          ? flipShape(cloneShape(originalShape))
-          : cloneShape(originalShape);
-      for (let rotate = 0; rotate < 4; rotate++) {
-        if (rotate > 0) {
-          testShape = rotateShape(testShape);
-        }
+function getShapeKey(shape) {
+  return shape.map((row) => row.join("")).join("/");
+}
 
-        for (let row = 0; row < BOARD_SIZE; row++) {
-          for (let col = 0; col < BOARD_SIZE; col++) {
-            const savedPlayer = currentPlayer;
-            currentPlayer = playerIndex;
+function getUniqueShapes(shape) {
+  const shapes = [];
+  const keys = new Set();
 
-            const canPlace = canPlacePiece(row, col, testShape);
+  for (let flip = 0; flip < 2; flip++) {
+    let testShape =
+      flip === 1 ? flipShape(cloneShape(shape)) : cloneShape(shape);
 
-            currentPlayer = savedPlayer;
+    for (let rotate = 0; rotate < 4; rotate++) {
+      if (rotate > 0) {
+        testShape = rotateShape(testShape);
+      }
 
-            if (canPlace) {
-              return true;
-            }
-          }
-        }
+      const key = getShapeKey(testShape);
+
+      if (!keys.has(key)) {
+        keys.add(key);
+        shapes.push(cloneShape(testShape));
       }
     }
   }
 
-  return false;
+  return shapes;
+}
+
+function getCandidateCells(playerIndex) {
+  const candidates = new Set();
+
+  if (!hasPlacedFirstPiece[playerIndex]) {
+    const corner = playerStartCorners[playerIndex];
+    candidates.add(`${corner.row},${corner.col}`);
+    return [...candidates].map((key) => {
+      const [row, col] = key.split(",").map(Number);
+      return { row, col };
+    });
+  }
+
+  const cornerDirections = [
+    { row: -1, col: -1 },
+    { row: -1, col: 1 },
+    { row: 1, col: -1 },
+    { row: 1, col: 1 },
+  ];
+
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const cell = getCell(row, col);
+
+      if (!cell.classList.contains(`player-${playerIndex}`)) {
+        continue;
+      }
+
+      cornerDirections.forEach((direction) => {
+        const nextRow = row + direction.row;
+        const nextCol = col + direction.col;
+
+        if (
+          nextRow < 0 ||
+          nextRow >= BOARD_SIZE ||
+          nextCol < 0 ||
+          nextCol >= BOARD_SIZE
+        ) {
+          return;
+        }
+
+        const nextCell = getCell(nextRow, nextCol);
+
+        if (nextCell.classList.contains("occupied")) {
+          return;
+        }
+
+        if (touchesVirtualSide(nextRow, nextCol, playerIndex)) {
+          return;
+        }
+
+        candidates.add(`${nextRow},${nextCol}`);
+      });
+    }
+  }
+
+  return [...candidates].map((key) => {
+    const [row, col] = key.split(",").map(Number);
+    return { row, col };
+  });
 }
 function getValidMoves(playerIndex) {
   const validMoves = [];
+  const moveKeys = new Set();
   const pieces = playerPieces[playerIndex];
+  const candidateCells = getCandidateCells(playerIndex);
 
   const savedPlayer = currentPlayer;
   currentPlayer = playerIndex;
@@ -705,33 +772,35 @@ function getValidMoves(playerIndex) {
       return;
     }
 
-    const originalShape = cloneShape(piece.shape);
+    const uniqueShapes = getUniqueShapes(piece.shape);
 
-    for (let flip = 0; flip < 2; flip++) {
-      let testShape =
-        flip === 1
-          ? flipShape(cloneShape(originalShape))
-          : cloneShape(originalShape);
+    uniqueShapes.forEach((shape) => {
+      const shapeCells = getShapeCells(shape);
 
-      for (let rotate = 0; rotate < 4; rotate++) {
-        if (rotate > 0) {
-          testShape = rotateShape(testShape);
-        }
+      candidateCells.forEach((candidate) => {
+        shapeCells.forEach((shapeCell) => {
+          const startRow = candidate.row - shapeCell.row;
+          const startCol = candidate.col - shapeCell.col;
 
-        for (let row = 0; row < BOARD_SIZE; row++) {
-          for (let col = 0; col < BOARD_SIZE; col++) {
-            if (canPlacePiece(row, col, testShape)) {
-              validMoves.push({
-                pieceIndex,
-                row,
-                col,
-                shape: cloneShape(testShape),
-              });
-            }
+          const key = `${pieceIndex}-${getShapeKey(shape)}-${startRow}-${startCol}`;
+
+          if (moveKeys.has(key)) {
+            return;
           }
-        }
-      }
-    }
+
+          moveKeys.add(key);
+
+          if (canPlacePiece(startRow, startCol, shape)) {
+            validMoves.push({
+              pieceIndex,
+              row: startRow,
+              col: startCol,
+              shape: cloneShape(shape),
+            });
+          }
+        });
+      });
+    });
   });
 
   currentPlayer = savedPlayer;
@@ -920,99 +989,56 @@ function playCpuTurn() {
     return;
   }
 
-  // 大きいピース優先
-  validMoves.sort((a, b) => {
-    const pieceA = playerPieces[currentPlayer][a.pieceIndex];
-    const pieceB = playerPieces[currentPlayer][b.pieceIndex];
-
-    const sizeA = getPieceSize(pieceA.shape);
-    const sizeB = getPieceSize(pieceB.shape);
-
-    const cornersA = countNewCorners(a.row, a.col, pieceA.shape, currentPlayer);
-    const cornersB = countNewCorners(b.row, b.col, pieceB.shape, currentPlayer);
-
-    const expansionA = getExpansionScore(
-      a.row,
-      a.col,
-      pieceA.shape,
-      currentPlayer,
-    );
-    const expansionB = getExpansionScore(
-      b.row,
-      b.col,
-      pieceB.shape,
-      currentPlayer,
-    );
-
-    return sizeB - sizeA || cornersB - cornersA || expansionB - expansionA;
-  }); // 最大サイズ候補だけ抽出
-  const bestSize = getPieceSize(
-    playerPieces[currentPlayer][validMoves[0].pieceIndex].shape,
-  );
-
-  const bestMoves = validMoves.filter(
-    (move) =>
-      getPieceSize(playerPieces[currentPlayer][move.pieceIndex].shape) ===
-      bestSize,
-  );
-
-  const bestMove = validMoves[0];
-
-  const bestScoreMoves = validMoves.filter((move) => {
-    const piece = playerPieces[currentPlayer][move.pieceIndex];
-    const bestPiece = playerPieces[currentPlayer][bestMove.pieceIndex];
-
-    const size = getPieceSize(piece.shape);
-    const bestSize = getPieceSize(bestPiece.shape);
+  // 最初にスコア計算して保存
+  const scoredMoves = validMoves.map((move) => {
+    const size = getPieceSize(move.shape);
 
     const corners = countNewCorners(
       move.row,
       move.col,
-      piece.shape,
-      currentPlayer,
-    );
-    const bestCorners = countNewCorners(
-      bestMove.row,
-      bestMove.col,
-      bestPiece.shape,
+      move.shape,
       currentPlayer,
     );
 
     const expansion = getExpansionScore(
       move.row,
       move.col,
-      piece.shape,
-      currentPlayer,
-    );
-    const bestExpansion = getExpansionScore(
-      bestMove.row,
-      bestMove.col,
-      bestPiece.shape,
+      move.shape,
       currentPlayer,
     );
 
-    return (
-      size === bestSize &&
-      corners === bestCorners &&
-      expansion === bestExpansion
-    );
+    return {
+      ...move,
+      score: size * 1000 + corners * 50 + expansion,
+    };
   });
-  const move =
-    bestScoreMoves[Math.floor(Math.random() * bestScoreMoves.length)];
+
+  // scoreだけでsort
+  scoredMoves.sort((a, b) => b.score - a.score);
+
+  const bestScore = scoredMoves[0].score;
+
+  // 同点候補
+  const bestMoves = scoredMoves.filter((move) => move.score === bestScore);
+
+  // 同点ならランダム
+  const move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
 
   const cpuName = players[currentPlayer];
   const pieceName = playerPieces[currentPlayer][move.pieceIndex].name;
 
   selectedPieceIndex = move.pieceIndex;
+
   playerPieces[currentPlayer][selectedPieceIndex].shape = cloneShape(
     move.shape,
   );
 
-  log.textContent = `${cpuName}（CPU）が「${pieceName}」を置きました。`;
+  if (log) {
+    log.textContent = `${cpuName}（CPU）が「${pieceName}」を置きました。`;
+  }
 
   placePiece(move.row, move.col);
 }
-
 function updateCpuPlayers() {
   cpuPlayers = players.map((_, index) => index !== humanPlayer);
 }
